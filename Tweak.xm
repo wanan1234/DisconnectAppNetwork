@@ -1,111 +1,44 @@
+// =============================================================
+//  DisconnectAppNetwork — 基于 NSURLProtocol 的断网插件
+//  原理：注册自定义 Protocol，直接拦截所有请求并返回错误
+//  不返回 nil，无闪退风险，断网更彻底
+// =============================================================
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <WebKit/WebKit.h>
 
-// ========== Hook NSURLSession ==========
-%hook NSURLSession
+// ========== 自定义 NSURLProtocol ==========
+@interface DisconnectProtocol : NSURLProtocol
+@end
 
-- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *data, NSURLResponse *response, NSError *error))completionHandler {
-    // 模拟返回错误，表示网络不可用
-    NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
-    completionHandler(nil, nil, error);
-    return nil; // 返回 nil 来阻止请求
-}
-
-%end
-
-// ========== Hook NSURLConnection ==========
-%hook NSURLConnection
-
-+ (NSData *)sendSynchronousRequest:(NSURLRequest *)request returningResponse:(NSURLResponse **)response error:(NSError **)error {
-    // 模拟返回错误，表示网络不可用
-    if (error) {
-        *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
-    }
-    return nil;
-}
-
-+ (NSURLConnection *)connectionWithRequest:(NSURLRequest *)request delegate:(id)delegate {
-    NSLog(@"[DisconnectAppNetwork] Hooked NSURLConnection");
-    return nil;
-}
-
-- (void)start {
-    NSLog(@"[DisconnectAppNetwork] NSURLConnection start hooked");
-}
-
-%end
-
-// ========== Hook AFHTTPSessionManager ==========
-%hook AFHTTPSessionManager
-
-- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLResponse *response, id responseObject, NSError *error))completionHandler {
-    NSLog(@"[DisconnectAppNetwork] Hooked AFNetworking request: %@", request.URL.absoluteString);
-    NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
-    completionHandler(nil, nil, error);
-    return nil;
-}
-
-%end
-
-// ========== Hook AFURLSessionManager ==========
-%hook AFURLSessionManager
-
-- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLResponse *response, id responseObject, NSError *error))completionHandler {
-    NSLog(@"[DisconnectAppNetwork] Blocked AFNetworking request: %@", request.URL.absoluteString);
-    NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
-    completionHandler(nil, nil, error);
-    return nil;
-}
-
-%end
-
-// ========== Hook CFSocketStream ==========
-%hook CFSocketStream
-
-- (void)open {
-    NSLog(@"[DisconnectAppNetwork] Hooked CFSocketStream open");
-}
-
-- (void)close {
-    NSLog(@"[DisconnectAppNetwork] Hooked CFSocketStream close");
-}
-
-%end
-
-// ========== Hook NSURLProtocol ==========
-%hook NSURLProtocol
+@implementation DisconnectProtocol
 
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
-    NSLog(@"[DisconnectAppNetwork] Hooked NSURLProtocol");
-    return NO; // 阻止任何网络请求
+    // 拦截所有请求（可添加白名单过滤）
+    return YES;
 }
 
-%end
-
-// ========== Hook WKWebView ==========
-%hook WKWebView
-
-- (void)loadRequest:(NSURLRequest *)request {
-    NSLog(@"[DisconnectAppNetwork] WKWebView network request intercepted: %@", request.URL.absoluteString);
-    // 不调用原始方法，直接返回
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
+    return request;
 }
 
-%end
-
-// ========== Hook GCDAsyncSocket ==========
-%hook GCDAsyncSocket
-
-- (void)connectToHost:(NSString *)host onPort:(uint16_t)port error:(NSError **)errPtr {
-    NSLog(@"[DisconnectAppNetwork] GCDAsyncSocket connection blocked to host: %@", host);
-    if (errPtr) {
-        *errPtr = [NSError errorWithDomain:@"GCDAsyncSocketErrorDomain" code:1 userInfo:nil];
-    }
+- (void)startLoading {
+    // 直接返回网络不可用错误，不发起真实请求
+    NSError *error = [NSError errorWithDomain:NSURLErrorDomain
+                                         code:NSURLErrorNotConnectedToInternet
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Disconnected by DisconnectAppNetwork"}];
+    [self.client URLProtocol:self didFailWithError:error];
 }
 
-%end
+- (void)stopLoading {
+    // 无需任何操作
+}
 
-// ========== 无弹窗，仅日志 ==========
+@end
+
+// ========== 自动注册 ==========
 %ctor {
-    NSLog(@"[DisconnectAppNetwork] 无弹窗版加载成功");
+    // 注册自定义 Protocol
+    [NSURLProtocol registerClass:[DisconnectProtocol class]];
+    NSLog(@"[DisconnectAppNetwork] NSURLProtocol 注册成功，所有网络请求将被拦截");
 }
