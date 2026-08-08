@@ -25,10 +25,10 @@ jobs:
         run: |
           export THEOS="$HOME/theos"
           make package FINALPACKAGE=1
-          echo "构建产物列表："
+          echo "=== 查找所有 .deb 文件 ==="
           find . -name "*.deb" -type f
 
-      - name: 上传 .deb 产物
+      - name: 上传 .deb 产物（自动查找）
         uses: actions/upload-artifact@v4
         with:
           name: DisconnectAppNetwork-deb
