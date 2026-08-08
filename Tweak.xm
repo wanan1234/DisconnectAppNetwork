@@ -1,138 +1,158 @@
 // =============================================================
-//  DisconnectAppNetwork — 断网插件增强版
-//  功能：拦截网络请求，模拟成功响应，避免 App 闪退
-//  专为多看阅读等 App 优化，支持白名单域名放行
-//  原项目名不变，只替换此文件
+//  DisconnectAppNetwork — 通用断网插件（TrollFools 适用）
+//  可注入到任意 App，彻底阻断所有网络请求
+//  无需修改 plist，TrollFools 会直接加载
 // =============================================================
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <WebKit/WebKit.h> 
+#import <WebKit/WebKit.h>
 
-// ---------- 配置区 ----------
-// 白名单域名（这些域名的请求将正常放行，不拦截）
-static NSArray *kWhitelistDomains = @[
-    // @"example.com", // 如需放行某些域名，取消注释并添加
-];
-// 延迟启用时间（秒），避免干扰 App 启动
-static const NSTimeInterval kEnableDelay = 1.5;
-
-// ---------- 辅助函数 ----------
-// 判断是否应该拦截此请求（白名单检查）
+// 是否拦截所有请求（可根据需要添加白名单）
 static BOOL DKShouldBlockRequest(NSURLRequest *request) {
-    if (!request.URL.host) return YES;
-    for (NSString *domain in kWhitelistDomains) {
-        if ([request.URL.host containsString:domain]) {
-            return NO; // 白名单放行
-        }
-    }
-    return YES; // 默认拦截
+    // 如果你需要对某些域名放行，可在此添加逻辑
+    // 例如：if ([request.URL.host containsString:@"apple.com"]) return NO;
+    return YES;
 }
 
-// 模拟成功响应（返回空 JSON + 200 状态码）
-static void DKSimulateSuccessResponse(NSURLRequest *request, void (^completion)(NSData *, NSURLResponse *, NSError *)) {
-    if (!completion) return;
-    NSData *mockData = [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
-    NSHTTPURLResponse *mockResponse = [[NSHTTPURLResponse alloc] initWithURL:request.URL
-                                                                  statusCode:200
-                                                                 HTTPVersion:@"HTTP/1.1"
-                                                                headerFields:@{@"Content-Type": @"application/json"}];
-    completion(mockData, mockResponse, nil);
+// 弹窗确认注入成功
+static void DKShowAlert(NSString *msg) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *window = [UIApplication sharedApplication].windows.firstObject;
+        if (!window) return;
+        UIViewController *root = window.rootViewController;
+        if (!root) return;
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"DisconnectAppNetwork"
+                                                                       message:msg
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [root presentViewController:alert animated:YES completion:nil];
+    });
 }
 
-// ---------- Hook 实现 ----------
+// ========== Hook NSURLSession（最常用） ==========
 %hook NSURLSession
-
+// dataTask 有回调
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *data, NSURLResponse *response, NSError *error))completionHandler {
     if (DKShouldBlockRequest(request)) {
-        NSLog(@"[DisconnectAppNetwork] 拦截请求: %@", request.URL.absoluteString);
-        // 模拟成功响应（避免 App 因网络错误崩溃）
-        DKSimulateSuccessResponse(request, completionHandler);
+        NSLog(@"[DisconnectAppNetwork] 拦截 dataTask: %@", request.URL);
+        if (completionHandler) {
+            NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
+            completionHandler(nil, nil, error);
+        }
         return nil;
     }
     return %orig(request, completionHandler);
 }
-
+// dataTask 无回调
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
     if (DKShouldBlockRequest(request)) {
-        NSLog(@"[DisconnectAppNetwork] 拦截请求(无回调): %@", request.URL.absoluteString);
+        NSLog(@"[DisconnectAppNetwork] 拦截 dataTask(无回调): %@", request.URL);
         return nil;
     }
     return %orig(request);
 }
-
+// uploadTask
+- (NSURLSessionUploadTask *)uploadTaskWithRequest:(NSURLRequest *)request fromFile:(NSURL *)fileURL completionHandler:(void (^)(NSData *data, NSURLResponse *response, NSError *error))completionHandler {
+    if (DKShouldBlockRequest(request)) {
+        NSLog(@"[DisconnectAppNetwork] 拦截 uploadTask: %@", request.URL);
+        if (completionHandler) {
+            NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
+            completionHandler(nil, nil, error);
+        }
+        return nil;
+    }
+    return %orig(request, fileURL, completionHandler);
+}
+// downloadTask
+- (NSURLSessionDownloadTask *)downloadTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURL *location, NSURLResponse *response, NSError *error))completionHandler {
+    if (DKShouldBlockRequest(request)) {
+        NSLog(@"[DisconnectAppNetwork] 拦截 downloadTask: %@", request.URL);
+        if (completionHandler) {
+            NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
+            completionHandler(nil, nil, error);
+        }
+        return nil;
+    }
+    return %orig(request, completionHandler);
+}
 %end
 
+// ========== Hook NSURLConnection ==========
 %hook NSURLConnection
-
+// 同步请求
 + (NSData *)sendSynchronousRequest:(NSURLRequest *)request returningResponse:(NSURLResponse **)response error:(NSError **)error {
     if (DKShouldBlockRequest(request)) {
-        NSLog(@"[DisconnectAppNetwork] 拦截同步请求: %@", request.URL.absoluteString);
-        if (response) {
-            *response = [[NSHTTPURLResponse alloc] initWithURL:request.URL statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{}];
-        }
+        NSLog(@"[DisconnectAppNetwork] 拦截同步请求: %@", request.URL);
         if (error) {
-            *error = nil;
+            *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
         }
-        return [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
+        return nil;
     }
     return %orig(request, response, error);
 }
-
+// 异步请求
++ (void)sendAsynchronousRequest:(NSURLRequest *)request queue:(NSOperationQueue *)queue completionHandler:(void (^)(NSURLResponse *response, NSData *data, NSError *connectionError))handler {
+    if (DKShouldBlockRequest(request)) {
+        NSLog(@"[DisconnectAppNetwork] 拦截异步请求: %@", request.URL);
+        if (handler) {
+            NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
+            handler(nil, nil, error);
+        }
+        return;
+    }
+    %orig(request, queue, handler);
+}
+// connectionWithRequest:delegate:
 + (NSURLConnection *)connectionWithRequest:(NSURLRequest *)request delegate:(id)delegate {
     if (DKShouldBlockRequest(request)) {
-        NSLog(@"[DisconnectAppNetwork] 拦截 connectionWithRequest: %@", request.URL.absoluteString);
+        NSLog(@"[DisconnectAppNetwork] 拦截 connectionWithRequest: %@", request.URL);
         return nil;
     }
     return %orig(request, delegate);
 }
-
 %end
 
+// ========== Hook AFNetworking ==========
 %hook AFHTTPSessionManager
-
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLResponse *response, id responseObject, NSError *error))completionHandler {
     if (DKShouldBlockRequest(request)) {
-        NSLog(@"[DisconnectAppNetwork] 拦截 AFNetworking 请求: %@", request.URL.absoluteString);
-        // 模拟成功响应
-        NSData *mockData = [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
-        NSHTTPURLResponse *mockResponse = [[NSHTTPURLResponse alloc] initWithURL:request.URL statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{}];
-        id jsonObject = [NSJSONSerialization JSONObjectWithData:mockData options:0 error:nil];
-        completionHandler(mockResponse, jsonObject, nil);
+        NSLog(@"[DisconnectAppNetwork] 拦截 AFNetworking: %@", request.URL);
+        if (completionHandler) {
+            NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
+            completionHandler(nil, nil, error);
+        }
         return nil;
     }
     return %orig(request, completionHandler);
 }
-
 %end
 
+// ========== Hook WKWebView ==========
 %hook WKWebView
-
 - (WKNavigation *)loadRequest:(NSURLRequest *)request {
     if (DKShouldBlockRequest(request)) {
-        NSLog(@"[DisconnectAppNetwork] WKWebView 拦截请求: %@", request.URL.absoluteString);
+        NSLog(@"[DisconnectAppNetwork] WKWebView 拦截: %@", request.URL);
         return nil;
     }
     return %orig(request);
 }
-
 %end
 
-// ---------- 延迟启用，避免干扰 App 启动 ----------
+// ========== Hook NSURLProtocol（底层拦截） ==========
+%hook NSURLProtocol
++ (BOOL)canInitWithRequest:(NSURLRequest *)request {
+    if (DKShouldBlockRequest(request)) {
+        // 返回 NO 让系统不处理该请求，相当于直接丢弃
+        return NO;
+    }
+    return %orig(request);
+}
+%end
+
+// ========== 注入确认 ==========
 %ctor {
-    NSLog(@"[DisconnectAppNetwork] 断网插件增强版加载成功，延迟 %.1f 秒启用", kEnableDelay);
-    // 延迟执行，确保 App 启动完成后再启用拦截
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kEnableDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        NSLog(@"[DisconnectAppNetwork] 插件已完全激活");
-        // 可选：弹窗提示（可注释掉）
-        // dispatch_async(dispatch_get_main_queue(), ^{
-        //     UIWindow *window = [UIApplication sharedApplication].windows.firstObject;
-        //     if (window) {
-        //         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"DisconnectAppNetwork"
-        //                                                                        message:@"断网插件已激活"
-        //                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        //         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        //         [window.rootViewController presentViewController:alert animated:YES completion:nil];
-        //     }
-        // });
+    NSLog(@"[DisconnectAppNetwork] 插件加载成功，当前进程: %@", [[NSBundle mainBundle] bundleIdentifier]);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        DKShowAlert(@"断网插件已注入成功！\n所有网络请求将被拦截。");
     });
 }
