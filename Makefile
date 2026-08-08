@@ -1,5 +1,4 @@
-TARGET := iphone:clang:latest:7.0
-
+TARGET := iphone:clang:latest:14.0   # <--- 原来是 7.0，现在改为 14.0
 
 include $(THEOS)/makefiles/common.mk
 
