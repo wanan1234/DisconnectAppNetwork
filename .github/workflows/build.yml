@@ -12,6 +12,9 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
+      - name: 选择 Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
       - name: 安装 Theos 依赖
         run: |
           brew install dpkg || true
@@ -25,14 +28,9 @@ jobs:
         run: |
           export THEOS="$HOME/theos"
           make package FINALPACKAGE=1
-          echo "=== 查找所有 .deb 文件 ==="
-          find . -name "*.deb" -type f
 
-      - name: 上传 .deb 产物（自动查找）
+      - name: 上传 .deb 产物
         uses: actions/upload-artifact@v4
         with:
           name: DisconnectAppNetwork-deb
-          path: |
-            packages/*.deb
-            .theos/*.deb
-            **/*.deb
+          path: packages/*.deb
