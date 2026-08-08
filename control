@@ -1,9 +1,9 @@
 Package: com.developlab.disconnectappnetwork
 Name: DisconnectAppNetwork
 Version: 0.0.1
-Architecture: iphoneos-arm iphoneos-arm64
-Description: An awesome MobileSubstrate tweak!
-Maintainer: null
-Author: null
+Architecture: iphoneos-arm
+Description: 断开 App 网络连接，模拟断网环境
+Maintainer: you <you@example.com>
+Author: you
 Section: Tweaks
-Depends: mobilesubstrate (>= 0.9.5000)
+Depends: mobilesubstrate
