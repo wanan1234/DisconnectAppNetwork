@@ -6,6 +6,7 @@
 // =============================================================
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <WebKit/WebKit.h> 
 
 // ---------- 配置区 ----------
 // 白名单域名（这些域名的请求将正常放行，不拦截）
