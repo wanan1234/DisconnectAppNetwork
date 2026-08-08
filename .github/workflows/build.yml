@@ -12,13 +12,27 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 使用 Theos Action 构建 Tweak
-        uses: Randomblock1/theos-action@v1   # 使用专门的 Action
-        with:
-          build-command: make package FINALPACKAGE=1
+      - name: 安装 Theos 依赖
+        run: |
+          brew install dpkg || true
+          brew install ldid || true
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+
+      - name: 编译并打包 .deb
+        env:
+          THEOS: ${{ github.workspace }}/theos
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+        run: |
+          export THEOS="$HOME/theos"
+          make package FINALPACKAGE=1
+          echo "构建产物列表："
+          find . -name "*.deb" -type f
 
       - name: 上传 .deb 产物
         uses: actions/upload-artifact@v4
         with:
           name: DisconnectAppNetwork-deb
-          path: packages/*.deb
+          path: |
+            packages/*.deb
+            .theos/*.deb
+            **/*.deb
