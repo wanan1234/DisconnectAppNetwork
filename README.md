@@ -6,6 +6,7 @@ If you use CH/A model devices you can use iOS settings to manager application ne
 
 Zh:  
 iOS插件 断开应用网络连接
+测试主要支持多看阅读，构建版：只拦截 HTTP/HTTPS放行 file://、data:// 等本地协议。 彻底断网备份版：拦截：http:// 和 https:// 和 file://、data:// 等本地协议。
 解决某些单机游戏太多广告影响游戏体验，在我生气的情况下开发了这个插件。  
 如果您使用CH/A型设备，您可以使用iOS设置来管理应用程序网络。这个插件是为其他设备准备的。  
 **⚠️并非所有应用程序都受支持。**  
